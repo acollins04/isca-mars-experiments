@@ -1,0 +1,43 @@
+import xarray as xr
+import os
+import glob
+from dask.distributed import Client, LocalCluster
+import numpy as np
+import pandas as pd
+import warnings
+
+def setup_dask_cluster(memory_limit='4GB', n_workers=4):
+    """Set up a local Dask cluster"""
+    cluster = LocalCluster(
+        n_workers=n_workers,
+        threads_per_worker=2,
+        memory_limit=memory_limit,
+        processes=True
+    )
+    client = Client(cluster)
+    print(f"Dask dashboard available at: {client.dashboard_link}")
+    return client
+
+#Initialise Dask client
+client = setup_dask_cluster(memory_limit='4GB', n_workers=4) 
+
+base_dir = r"C:\path\to\output\folder"
+
+
+# Get file list
+file_list = sorted(glob.glob(os.path.join(base_dir, "run*/atmos_daily.nc")))
+print(f"Found {len(file_list)} files, total size: {len(file_list)*200/1024:.1f} GB")
+
+# Lazy loading with Dask
+combined_ds = xr.open_mfdataset(
+    file_list,
+    combine='by_coords',
+    parallel=True, # Reads files in paraellel instead of sequentially to speed up file reading
+    decode_times=False, # For Mars non-standard time units
+    chunks={'time': 30, 'lon': 72, 'lat': 46}, # Defines Dask chunks for lazy computation
+    data_vars='minimal' # Lazily loads variables to save memory
+)
+
+print("\nDataset loaded")
+print(f"Dimensions: {combined_ds.dims}")
+print(f"Time variable info: {combined_ds.time}")
